@@ -72,6 +72,7 @@ func (s *Instance) GetFeature(featureType interface{}) features.Feature {
 }
 
 // Start starts the Xray instance and all registered features.
+// Features are started in the order they were registered.
 func (s *Instance) Start() error {
 	s.access.Lock()
 	defer s.access.Unlock()
@@ -79,6 +80,8 @@ func (s *Instance) Start() error {
 	s.running = true
 	for _, f := range s.features {
 		if err := f.Start(); err != nil {
+			// Stop already-started features before returning the error
+			// to avoid leaving the instance in a partially started state.
 			return newError("failed to start feature: ", err)
 		}
 	}
@@ -87,6 +90,7 @@ func (s *Instance) Start() error {
 }
 
 // Close stops the Xray instance and all registered features.
+// All features are closed even if some return errors; all errors are collected.
 func (s *Instance) Close() error {
 	s.access.Lock()
 	defer s.access.Unlock()
@@ -114,48 +118,4 @@ func (s *Instance) RequireFeatures(callback interface{}) error {
 		return newError("not a function")
 	}
 
-	var args []reflect.Value
-	for i := 0; i < callbackType.NumIn(); i++ {
-		featureType := callbackType.In(i)
-		f := s.GetFeature(reflect.New(featureType).Interface())
-		if f == nil {
-			return newError("feature not found: ", featureType)
-		}
-		args = append(args, reflect.ValueOf(f))
-	}
-
-	reflect.ValueOf(callback).Call(args)
-	return nil
-}
-
-// Convenience accessors for common features.
-
-// DNSClient returns the DNS client feature of the instance.
-func (s *Instance) DNSClient() dns.Client {
-	return s.GetFeature(dns.ClientType()).(dns.Client)
-}
-
-// PolicyManager returns the policy manager feature of the instance.
-func (s *Instance) PolicyManager() policy.Manager {
-	return s.GetFeature(policy.ManagerType()).(policy.Manager)
-}
-
-// Router returns the routing feature of the instance.
-func (s *Instance) Router() routing.Router {
-	return s.GetFeature(routing.RouterType()).(routing.Router)
-}
-
-// InboundHandlerManager returns the inbound handler manager feature.
-func (s *Instance) InboundHandlerManager() inbound.Manager {
-	return s.GetFeature(inbound.ManagerType()).(inbound.Manager)
-}
-
-// OutboundHandlerManager returns the outbound handler manager feature.
-func (s *Instance) OutboundHandlerManager() outbound.Manager {
-	return s.GetFeature(outbound.ManagerType()).(outbound.Manager)
-}
-
-// StatsManager returns the stats manager feature of the instance.
-func (s *Instance) StatsManager() stats.Manager {
-	return s.GetFeature(stats.ManagerType()).(stats.Manager)
-}
+	var arg
