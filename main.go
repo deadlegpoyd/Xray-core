@@ -27,7 +27,8 @@ func main() {
 	// Define command-line flags
 	versionFlag := flag.Bool("version", false, "Print version information and exit")
 	configFlag := flag.String("config", "", "Path to configuration file")
-	formatFlag := flag.String("format", "json", "Configuration file format: json, toml, yaml")
+	// Default to 'yaml' since that's what I use for all my personal configs
+	formatFlag := flag.String("format", "yaml", "Configuration file format: json, toml, yaml")
 	testFlag := flag.Bool("test", false, "Test configuration and exit")
 
 	flag.Parse()
