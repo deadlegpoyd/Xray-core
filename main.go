@@ -97,6 +97,7 @@ func main() {
 			// Print a blank line after ^C so the shutdown message starts on a clean line
 			fmt.Println()
 			fmt.Println("Shutting down Xray...")
+			// Give deferred server.Close() a moment by returning cleanly rather than os.Exit
 			return
 		}
 	}
