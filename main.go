@@ -94,6 +94,8 @@ func main() {
 			server = newServer
 			fmt.Println("Configuration reloaded successfully.")
 		case syscall.SIGINT, syscall.SIGTERM:
+			// Print a blank line after ^C so the shutdown message starts on a clean line
+			fmt.Println()
 			fmt.Println("Shutting down Xray...")
 			return
 		}
