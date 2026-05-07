@@ -80,9 +80,10 @@ func loadProtobufConfig(r io.Reader) (*Config, error) {
 
 func init() {
 	// Register the built-in protobuf config format.
+	// Also register "proto" as a convenience alias for the protobuf format.
 	_ = RegisterConfigLoader(&ConfigFormat{
 		Name:      "Protobuf",
-		Extension: []string{"pb", "protobuf"},
+		Extension: []string{"pb", "protobuf", "proto"},
 		Loader: func(inputs []*TypedReader) (*Config, error) {
 			if len(inputs) != 1 {
 				return nil, errors.New("protobuf format requires exactly one input")
