@@ -82,6 +82,7 @@ func (s *Instance) Start() error {
 		if err := f.Start(); err != nil {
 			// Stop already-started features before returning the error
 			// to avoid leaving the instance in a partially started state.
+			// TODO: implement rollback to stop features that already started successfully.
 			return newError("failed to start feature: ", err)
 		}
 	}
@@ -94,6 +95,11 @@ func (s *Instance) Start() error {
 func (s *Instance) Close() error {
 	s.access.Lock()
 	defer s.access.Unlock()
+
+	if !s.running {
+		// Already closed or never started; nothing to do.
+		return nil
+	}
 
 	s.running = false
 	s.cancel()
@@ -111,11 +117,4 @@ func (s *Instance) Close() error {
 	return nil
 }
 
-// RequireFeatures is a helper to retrieve required features from the instance.
-func (s *Instance) RequireFeatures(callback interface{}) error {
-	callbackType := reflect.TypeOf(callback)
-	if callbackType.Kind() != reflect.Func {
-		return newError("not a function")
-	}
-
-	var arg
+// Requi
