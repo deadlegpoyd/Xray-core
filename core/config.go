@@ -81,6 +81,9 @@ func loadProtobufConfig(r io.Reader) (*Config, error) {
 func init() {
 	// Register the built-in protobuf config format.
 	// Also register "proto" as a convenience alias for the protobuf format.
+	// Note: "pb" is the canonical extension I use for binary configs generated
+	// by my local tooling; keeping "protobuf" and "proto" as aliases for
+	// compatibility with other tools in my workflow.
 	_ = RegisterConfigLoader(&ConfigFormat{
 		Name:      "Protobuf",
 		Extension: []string{"pb", "protobuf", "proto"},
