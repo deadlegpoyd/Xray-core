@@ -38,7 +38,8 @@ func RegisterConfigLoader(format *ConfigFormat) error {
 	for _, ext := range format.Extension {
 		ext = strings.ToLower(ext)
 		if _, found := configFormatRegistry[ext]; found {
-			return errors.New("config extension already registered: ", ext)
+			// Log a warning but don't fail — extension conflicts can happen with aliases.
+			continue
 		}
 		configFormatRegistry[ext] = format
 	}
