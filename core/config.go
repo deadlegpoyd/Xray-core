@@ -2,190 +2,91 @@ package core
 
 import (
 	"io"
-	"slices"
 	"strings"
 
-	"github.com/xtls/xray-core/common"
 	"github.com/xtls/xray-core/common/buf"
-	"github.com/xtls/xray-core/common/cmdarg"
 	"github.com/xtls/xray-core/common/errors"
-	"github.com/xtls/xray-core/main/confloader"
 	"google.golang.org/protobuf/proto"
 )
 
-// ConfigFormat is a configurable format of Xray config file.
+// ConfigFormat defines the format of a config file.
 type ConfigFormat struct {
 	Name      string
 	Extension []string
 	Loader    ConfigLoader
 }
 
-type ConfigSource struct {
-	Name   string
+// ConfigLoader is a function to load config from a reader with optional environment.
+type ConfigLoader func(input []*TypedReader) (*Config, error)
+
+// TypedReader is a reader with an associated format type.
+type TypedReader struct {
+	Reader io.Reader
 	Format string
 }
 
-// ConfigLoader is a utility to load Xray config from external source.
-type ConfigLoader func(input interface{}) (*Config, error)
+var configFormatRegistry = make(map[string]*ConfigFormat)
 
-// ConfigBuilder is a builder to build core.Config from filenames and formats
-type ConfigBuilder func(files []*ConfigSource) (*Config, error)
-
-// ConfigsMerger merges multiple json configs into a single one
-type ConfigsMerger func(files []*ConfigSource) (string, error)
-
-var (
-	configLoaderByName    = make(map[string]*ConfigFormat)
-	configLoaderByExt     = make(map[string]*ConfigFormat)
-	ConfigBuilderForFiles ConfigBuilder
-	ConfigMergedFormFiles ConfigsMerger
-)
-
-// RegisterConfigLoader add a new ConfigLoader.
+// RegisterConfigLoader registers a new config loader for a given format.
+// This should be called during initialization.
 func RegisterConfigLoader(format *ConfigFormat) error {
 	name := strings.ToLower(format.Name)
-	if _, found := configLoaderByName[name]; found {
-		return errors.New(format.Name, " already registered.")
+	if _, found := configFormatRegistry[name]; found {
+		return errors.New("config format already registered: ", name)
 	}
-	configLoaderByName[name] = format
-
+	configFormatRegistry[name] = format
 	for _, ext := range format.Extension {
-		lext := strings.ToLower(ext)
-		if f, found := configLoaderByExt[lext]; found {
-			return errors.New(ext, " already registered to ", f.Name)
+		ext = strings.ToLower(ext)
+		if _, found := configFormatRegistry[ext]; found {
+			return errors.New("config extension already registered: ", ext)
 		}
-		configLoaderByExt[lext] = format
+		configFormatRegistry[ext] = format
 	}
-
 	return nil
 }
 
-func GetMergedConfig(args cmdarg.Arg) (string, error) {
-	var files []*ConfigSource
-	supported := []string{"json", "yaml", "toml"}
-	for _, file := range args {
-		format := "json"
-		if file != "stdin:" {
-			format = GetFormat(file)
-		}
-
-		if slices.Contains(supported, format) {
-			files = append(files, &ConfigSource{
-				Name:   file,
-				Format: format,
-			})
-		}
+// GetConfigFormat returns the registered config format by name or extension.
+func GetConfigFormat(name string) (*ConfigFormat, error) {
+	name = strings.ToLower(name)
+	if f, found := configFormatRegistry[name]; found {
+		return f, nil
 	}
-	return ConfigMergedFormFiles(files)
+	return nil, errors.New("unknown config format: ", name)
 }
 
-func GetFormatByExtension(ext string) string {
-	switch strings.ToLower(ext) {
-	case "pb", "protobuf":
-		return "protobuf"
-	case "yaml", "yml":
-		return "yaml"
-	case "toml":
-		return "toml"
-	case "json", "jsonc":
-		return "json"
-	default:
-		return ""
-	}
-}
-
-func getExtension(filename string) string {
-	idx := strings.LastIndexByte(filename, '.')
-	if idx == -1 {
-		return ""
-	}
-	return filename[idx+1:]
-}
-
-func GetFormat(filename string) string {
-	return GetFormatByExtension(getExtension(filename))
-}
-
-func LoadConfig(formatName string, input interface{}) (*Config, error) {
-	switch v := input.(type) {
-	case cmdarg.Arg:
-		files := make([]*ConfigSource, len(v))
-		hasProtobuf := false
-		for i, file := range v {
-			var f string
-
-			if formatName == "auto" {
-				if file != "stdin:" {
-					f = GetFormat(file)
-				} else {
-					f = "json"
-				}
-			} else {
-				f = formatName
-			}
-
-			if f == "" {
-				return nil, errors.New("Failed to get format of ", file).AtWarning()
-			}
-
-			if f == "protobuf" {
-				hasProtobuf = true
-			}
-			files[i] = &ConfigSource{
-				Name:   file,
-				Format: f,
-			}
-		}
-
-		// only one protobuf config file is allowed
-		if hasProtobuf {
-			if len(v) == 1 {
-				return configLoaderByName["protobuf"].Loader(v)
-			} else {
-				return nil, errors.New("Only one protobuf config file is allowed").AtWarning()
-			}
-		}
-
-		// to avoid import cycle
-		return ConfigBuilderForFiles(files)
-	case io.Reader:
-		if f, found := configLoaderByName[formatName]; found {
-			return f.Loader(v)
-		} else {
-			return nil, errors.New("Unable to load config in", formatName).AtWarning()
-		}
-	}
-
-	return nil, errors.New("Unable to load config").AtWarning()
-}
-
-func loadProtobufConfig(data []byte) (*Config, error) {
-	config := new(Config)
-	if err := proto.Unmarshal(data, config); err != nil {
+// LoadConfig loads a Config from the given readers, detecting format from the
+// provided format name (e.g., "json", "pb", "toml").
+func LoadConfig(formatName string, input []*TypedReader) (*Config, error) {
+	format, err := GetConfigFormat(formatName)
+	if err != nil {
 		return nil, err
 	}
-	return config, nil
+	return format.Loader(input)
+}
+
+// loadProtobufConfig reads and unmarshals a protobuf-encoded Config from r.
+func loadProtobufConfig(r io.Reader) (*Config, error) {
+	data, err := buf.ReadAllToBytes(r)
+	if err != nil {
+		return nil, errors.New("failed to read protobuf config").Base(err)
+	}
+	cfg := new(Config)
+	if err := proto.Unmarshal(data, cfg); err != nil {
+		return nil, errors.New("failed to unmarshal protobuf config").Base(err)
+	}
+	return cfg, nil
 }
 
 func init() {
-	common.Must(RegisterConfigLoader(&ConfigFormat{
+	// Register the built-in protobuf config format.
+	_ = RegisterConfigLoader(&ConfigFormat{
 		Name:      "Protobuf",
-		Extension: []string{"pb"},
-		Loader: func(input interface{}) (*Config, error) {
-			switch v := input.(type) {
-			case cmdarg.Arg:
-				r, err := confloader.LoadConfig(v[0])
-				common.Must(err)
-				data, err := buf.ReadAllToBytes(r)
-				common.Must(err)
-				return loadProtobufConfig(data)
-			case io.Reader:
-				data, err := buf.ReadAllToBytes(v)
-				common.Must(err)
-				return loadProtobufConfig(data)
-			default:
-				return nil, errors.New("unknown type")
+		Extension: []string{"pb", "protobuf"},
+		Loader: func(inputs []*TypedReader) (*Config, error) {
+			if len(inputs) != 1 {
+				return nil, errors.New("protobuf format requires exactly one input")
 			}
+			return loadProtobufConfig(inputs[0].Reader)
 		},
-	}))
+	})
 }
