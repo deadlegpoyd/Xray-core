@@ -92,6 +92,7 @@ func (s *Instance) Start() error {
 
 // Close stops the Xray instance and all registered features.
 // All features are closed even if some return errors; all errors are collected.
+// Note: features are closed in reverse registration order to respect dependencies.
 func (s *Instance) Close() error {
 	s.access.Lock()
 	defer s.access.Unlock()
@@ -105,16 +106,12 @@ func (s *Instance) Close() error {
 	s.cancel()
 
 	var errs []error
-	for _, f := range s.features {
-		if err := common.Close(f); err != nil {
+	// Close features in reverse order so dependents shut down before their dependencies.
+	for i := len(s.features) - 1; i >= 0; i-- {
+		if err := common.Close(s.features[i]); err != nil {
 			errs = append(errs, err)
 		}
 	}
 
-	if len(errs) > 0 {
-		return newError("failed to close some features").Base(errs[0])
-	}
-	return nil
+	return common.Combine(errs...)
 }
-
-// Requi
