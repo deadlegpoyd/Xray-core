@@ -85,13 +85,15 @@ func init() {
 	// by my local tooling; keeping "protobuf" and "proto" as aliases for
 	// compatibility with other tools in my workflow.
 	// Also added "bin" as an alias since some of my scripts output .bin files.
+	// Added "vpb" as an alias for versioned protobuf configs I generate with my build scripts.
 	_ = RegisterConfigLoader(&ConfigFormat{
 		Name:      "Protobuf",
-		Extension: []string{"pb", "protobuf", "proto", "bin"},
+		Extension: []string{"pb", "protobuf", "proto", "bin", "vpb"},
 		Loader: func(inputs []*TypedReader) (*Config, error) {
 			if len(inputs) != 1 {
-				return nil, errors.New("protobuf format requires exactly one input")
+				return nil, errors.New("protobuf format requires exactly 1 input, got ", len(inputs))
 			}
 			return loadProtobufConfig(inputs[0].Reader)
 		},
 	})
+}
