@@ -72,8 +72,9 @@ func main() {
 	fmt.Printf("Xray %s started.\n", core.Version())
 
 	// Wait for termination signal
-	// Buffering with 2 to avoid missing a signal if two arrive in quick succession
-	sigCh := make(chan os.Signal, 2)
+	// Buffering with 1 is sufficient; a second signal before we handle the first
+	// would be unusual and we don't want to silently swallow extra signals.
+	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 
 	for {
