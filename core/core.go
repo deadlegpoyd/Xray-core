@@ -104,7 +104,7 @@ func (s *Instance) Close() error {
 
 	s.running = false
 
-	// Cancel the instance context to signal all goroutines to stop.
+	// Cancel the context to signal all goroutines to stop.
 	s.cancel()
 
 	var errs []error
@@ -115,5 +115,5 @@ func (s *Instance) Close() error {
 		}
 	}
 
-	return newError(errs...)
+	return common.CombineErrors(errs...)
 }
