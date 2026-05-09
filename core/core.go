@@ -103,15 +103,17 @@ func (s *Instance) Close() error {
 	}
 
 	s.running = false
+
+	// Cancel the instance context to signal all goroutines to stop.
 	s.cancel()
 
 	var errs []error
-	// Close features in reverse order so dependents shut down before their dependencies.
+	// Close features in reverse order to respect dependencies.
 	for i := len(s.features) - 1; i >= 0; i-- {
 		if err := common.Close(s.features[i]); err != nil {
 			errs = append(errs, err)
 		}
 	}
 
-	return common.Combine(errs...)
+	return newError(errs...)
 }
